@@ -44,8 +44,19 @@
   /* ---- corps ---- */
   #corps{ flex:1; display:flex; min-height:0; }
   #carte{ flex:1; min-width:0; }
+  #separateur{
+    width:10px; flex-shrink:0; cursor:col-resize; background:var(--panneau);
+    border-left:1px solid var(--bordure); border-right:1px solid var(--bordure);
+    position:relative; touch-action:none;
+  }
+  #separateur::after{
+    content:""; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:3px; height:34px; border-radius:2px; background:var(--neutre);
+  }
+  #separateur:hover::after, #separateur.actif::after{ background:#6b7788; }
+
   #panneauDroit{
-    width:320px; flex-shrink:0; background:var(--panneau); border-left:1px solid var(--bordure);
+    width:320px; min-width:170px; flex-shrink:0; background:var(--panneau);
     display:flex; flex-direction:column; min-height:0;
   }
   #panneauDroit h2{ font-size:13px; margin:0; padding:12px 14px; border-bottom:1px solid var(--bordure);
@@ -108,6 +119,7 @@
 
   <div id="corps">
     <div id="carte"></div>
+    <div id="separateur"></div>
 
     <div id="panneauDroit">
       <h2>Alertes en direct</h2>
@@ -129,7 +141,52 @@
   const COULEURS_VIGILANCE = { vert:"#2e9e5b", jaune:"#e0c235", orange:"#e08a2e", rouge:"#d13b3b" };
   const BBOX_FRANCE = "-5.3,41.2,9.7,51.3"; // west,south,east,north
 
+  // ---------- séparateur redimensionnable (type JSplitPane) ----------
+  (function initSeparateur() {
+    const separateur = document.getElementById("separateur");
+    const panneau = document.getElementById("panneauDroit");
+    const corps = document.getElementById("corps");
+    let enCours = false;
+
+    function appliquerLargeur(largeurPx) {
+      const largeurMax = corps.clientWidth - 120; // garde au moins 120px pour la carte
+      const largeurBornee = Math.max(170, Math.min(largeurPx, largeurMax));
+      panneau.style.width = largeurBornee + "px";
+    }
+
+    separateur.addEventListener("pointerdown", (evenement) => {
+      enCours = true;
+      separateur.classList.add("actif");
+      separateur.setPointerCapture(evenement.pointerId);
+    });
+
+    separateur.addEventListener("pointermove", (evenement) => {
+      if (!enCours) return;
+      const rectCorps = corps.getBoundingClientRect();
+      appliquerLargeur(rectCorps.right - evenement.clientX);
+      if (carteInstance) carteInstance.invalidateSize();
+    });
+
+    function terminerGlissement(evenement) {
+      if (!enCours) return;
+      enCours = false;
+      separateur.classList.remove("actif");
+      window.storage.set("largeur_panneau", panneau.style.width).catch(() => {});
+    }
+    separateur.addEventListener("pointerup", terminerGlissement);
+    separateur.addEventListener("pointercancel", terminerGlissement);
+
+    // largeur enregistrée d'une session précédente
+    window.storage.get("largeur_panneau").then(res => {
+      if (res && res.value) panneau.style.width = res.value;
+    }).catch(() => {});
+
+    // sur petit écran, démarrer avec un panneau plus étroit par défaut
+    if (window.innerWidth < 640) panneau.style.width = "230px";
+  })();
+
   const carte = L.map("carte", { zoomControl:true }).setView([46.6, 2.4], 6);
+  const carteInstance = carte;
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "&copy; OpenStreetMap, &copy; CARTO",
     maxZoom: 18
