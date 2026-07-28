@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Feux de forêt — France</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --fond:        #12161b;
+    --panneau:     #191f26;
+    --bordure:     #262e37;
+    --texte:       #e6e9ec;
+    --texte-att:   #8b96a3;
+    --vert:        #2e9e5b;
+    --jaune:       #e0c235;
+    --orange:      #e08a2e;
+    --rouge:       #d13b3b;
+    --neutre:      #3a4451;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--fond); color:var(--texte);
+             font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  #app{ display:flex; flex-direction:column; height:100%; }
+
+  /* ---- barre du haut ---- */
+  header{
+    display:flex; align-items:center; gap:18px;
+    padding:10px 16px; background:var(--panneau); border-bottom:1px solid var(--bordure);
+    flex-wrap:wrap;
+  }
+  header h1{ font-size:15px; font-weight:600; margin:0; letter-spacing:.2px; }
+  .legende{ display:flex; gap:14px; align-items:center; margin-left:auto; flex-wrap:wrap; }
+  .legende .item{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--texte-att); }
+  .puce{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .maj{ font-size:11px; color:var(--texte-att); white-space:nowrap; }
+  button.actualiser{
+    background:var(--neutre); color:var(--texte); border:1px solid var(--bordure);
+    border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer;
+  }
+  button.actualiser:hover{ background:#465063; }
+
+  /* ---- corps ---- */
+  #corps{ flex:1; display:flex; min-height:0; }
+  #carte{ flex:1; min-width:0; }
+  #panneauDroit{
+    width:320px; flex-shrink:0; background:var(--panneau); border-left:1px solid var(--bordure);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  #panneauDroit h2{ font-size:13px; margin:0; padding:12px 14px; border-bottom:1px solid var(--bordure);
+                     color:var(--texte-att); text-transform:uppercase; letter-spacing:.6px; font-weight:600; }
+  #listeAlertes{ flex:1; overflow-y:auto; padding:8px; }
+
+  .alerte{
+    border:1px solid var(--bordure); border-left-width:4px; border-radius:6px;
+    padding:9px 10px; margin-bottom:8px; background:#141a20;
+  }
+  .alerte .titre{ font-size:13px; font-weight:600; display:flex; justify-content:space-between; gap:8px; }
+  .alerte .details{ font-size:12px; color:var(--texte-att); margin-top:3px; line-height:1.4; }
+  .alerte.vert   { border-left-color:var(--vert); }
+  .alerte.jaune  { border-left-color:var(--jaune); }
+  .alerte.orange { border-left-color:var(--orange); }
+  .alerte.rouge  { border-left-color:var(--rouge); }
+  .alerte.feu    { border-left-color:#ff5a3c; }
+
+  .messageEtat{
+    margin:10px; padding:10px 12px; border:1px solid var(--bordure); border-radius:6px;
+    font-size:12px; color:var(--texte-att); background:#141a20; line-height:1.5;
+  }
+  .messageEtat b{ color:var(--texte); }
+
+  #panneauCle{
+    padding:10px 14px; border-top:1px solid var(--bordure); font-size:11px; color:var(--texte-att);
+  }
+  #panneauCle input{
+    width:100%; margin-top:6px; background:#0e1216; border:1px solid var(--bordure); color:var(--texte);
+    border-radius:5px; padding:6px 8px; font-size:12px;
+  }
+  #panneauCle button{
+    margin-top:6px; width:100%; background:var(--neutre); color:var(--texte); border:none;
+    border-radius:5px; padding:6px 0; font-size:12px; cursor:pointer;
+  }
+
+  .leaflet-popup-content-wrapper{ background:#1c232b; color:var(--texte); }
+  .leaflet-popup-tip{ background:#1c232b; }
+  .popupFeu b{ color:#ff8a6a; }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--neutre); border-radius:4px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>Feux de forêt — France</h1>
+    <div class="legende">
+      <span class="item"><span class="puce" style="background:var(--vert)"></span>Vert</span>
+      <span class="item"><span class="puce" style="background:var(--jaune)"></span>Jaune</span>
+      <span class="item"><span class="puce" style="background:var(--orange)"></span>Orange</span>
+      <span class="item"><span class="puce" style="background:var(--rouge)"></span>Rouge</span>
+      <span class="item"><span class="puce" style="background:#ff5a3c;border-radius:50%"></span>Foyer détecté</span>
+    </div>
+    <span class="maj" id="majTexte">chargement…</span>
+    <button class="actualiser" id="btnActualiser">Actualiser</button>
+  </header>
+
+  <div id="corps">
+    <div id="carte"></div>
+
+    <div id="panneauDroit">
+      <h2>Alertes en direct</h2>
+      <div id="listeAlertes"></div>
+      <div id="panneauCle">
+        Foyers actifs via NASA FIRMS (clé gratuite, ~1 min sur
+        <a href="https://firms.modaps.eosdis.nasa.gov/api/map_key/" target="_blank" style="color:#8fb3e0">firms.modaps.eosdis.nasa.gov</a>).
+        <input id="champCle" type="text" placeholder="Coller la clé FIRMS ici">
+        <button id="btnCle">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(async function () {
+
+  const COULEURS_VIGILANCE = { vert:"#2e9e5b", jaune:"#e0c235", orange:"#e08a2e", rouge:"#d13b3b" };
+  const BBOX_FRANCE = "-5.3,41.2,9.7,51.3"; // west,south,east,north
+
+  const carte = L.map("carte", { zoomControl:true }).setView([46.6, 2.4], 6);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OpenStreetMap, &copy; CARTO",
+    maxZoom: 18
+  }).addTo(carte);
+
+  const coucheDepartements = L.geoJSON(null, {
+    style: styleDepartement,
+    onEachFeature: (feature, calque) => {
+      calque.on("click", () => {
+        const d = feature.proprietesVigilance || {};
+        calque.bindPopup(
+          `<b>${feature.properties.nom}</b><br>Vigilance : ${d.niveauLabel || "non disponible"}`
+        ).openPopup();
+      });
+    }
+  }).addTo(carte);
+
+  const coucheFoyers = L.layerGroup().addTo(carte);
+
+  let departementsGeoJSON = null;
+  let vigilanceParDept = {};   // code_departement -> { niveau, niveauLabel }
+  let cleFIRMS = null;
+
+  // ---------- clé FIRMS (stockage persistant de l'artefact) ----------
+  try {
+    const enregistre = await window.storage.get("cle_firms");
+    if (enregistre && enregistre.value) {
+      cleFIRMS = enregistre.value;
+      document.getElementById("champCle").value = cleFIRMS;
+    }
+  } catch (erreur) { /* aucune clé enregistrée pour l'instant */ }
+
+  document.getElementById("btnCle").addEventListener("click", async () => {
+    const valeur = document.getElementById("champCle").value.trim();
+    if (!valeur) return;
+    cleFIRMS = valeur;
+    try { await window.storage.set("cle_firms", valeur); } catch (erreur) { console.error(erreur); }
+    chargerFoyers();
+  });
+
+  // ---------- style d'un département selon son niveau de vigilance ----------
+  function styleDepartement(feature) {
+    const code = feature.properties.code;
+    const info = vigilanceParDept[code];
+    const couleur = info ? COULEURS_VIGILANCE[info.niveau] : "#333c46";
+    return { color:"#0e1216", weight:1, fillColor:couleur, fillOpacity:0.55 };
+  }
+
+  // ---------- contours des départements ----------
+  async function chargerDepartements() {
+    const reponse = await fetch("https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson");
+    departementsGeoJSON = await reponse.json();
+    coucheDepartements.addData(departementsGeoJSON);
+  }
+
+  // ---------- vigilance météo (niveau feux de forêt / niveau global) ----------
+  async function chargerVigilance() {
+    const url = "https://public.opendatasoft.com/api/records/1.0/search/?dataset=weatherref-france-vigilance-meteo-departement&rows=110";
+    const reponse = await fetch(url);
+    const donnees = await reponse.json();
+    const nouveauMap = {};
+
+    (donnees.records || []).forEach(enr => {
+      const champs = enr.fields || {};
+      const code = champs.code_departement || champs.dep_code || champs.code;
+      if (!code) return;
+
+      // le jeu de données expose un niveau par phénomène ; on retient le plus élevé du département,
+      // avec une préférence pour un champ "feu de forêt" s'il existe.
+      const candidats = [
+        champs.risque_feu_de_foret, champs.feu_de_foret, champs.niveau_feu_de_foret,
+        champs.vigilance_max, champs.niveau_global, champs.couleur
+      ].filter(Boolean);
+
+      const brut = (candidats[0] || "").toString().toLowerCase();
+      let niveau = null;
+      if (brut.includes("rouge")) niveau = "rouge";
+      else if (brut.includes("orange")) niveau = "orange";
+      else if (brut.includes("jaune")) niveau = "jaune";
+      else if (brut.includes("vert")) niveau = "vert";
+
+      if (niveau) {
+        nouveauMap[code] = { niveau, niveauLabel: niveau.charAt(0).toUpperCase() + niveau.slice(1) };
+      }
+    });
+
+    vigilanceParDept = nouveauMap;
+    if (departementsGeoJSON) {
+      coucheDepartements.eachLayer(c => c.setStyle(styleDepartement(c.feature)));
+    }
+  }
+
+  // ---------- foyers actifs (NASA FIRMS, capteur VIIRS) ----------
+  async function chargerFoyers() {
+    coucheFoyers.clearLayers();
+    if (!cleFIRMS) return;
+
+    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${cleFIRMS}/VIIRS_SNPP_NRT/${BBOX_FRANCE}/2`;
+    const reponse = await fetch(url);
+    const texte = await reponse.text();
+    const lignes = texte.trim().split("\n");
+    if (lignes.length < 2) return;
+
+    const entetes = lignes[0].split(",");
+    const iLat = entetes.indexOf("latitude");
+    const iLon = entetes.indexOf("longitude");
+    const iConfiance = entetes.indexOf("confidence");
+    const iPuissance = entetes.indexOf("frp");
+    const iDate = entetes.indexOf("acq_date");
+    const iHeure = entetes.indexOf("acq_time");
+
+    for (let i = 1; i < lignes.length; i++) {
+      const valeurs = lignes[i].split(",");
+      const lat = parseFloat(valeurs[iLat]);
+      const lon = parseFloat(valeurs[iLon]);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+
+      const puissance = parseFloat(valeurs[iPuissance]) || 0;
+      const rayon = Math.min(4 + puissance / 8, 16);
+
+      const marqueur = L.circleMarker([lat, lon], {
+        radius: rayon, color:"#ff5a3c", weight:1, fillColor:"#ff5a3c", fillOpacity:0.75
+      }).bindPopup(
+        `<div class="popupFeu"><b>Foyer détecté</b><br>
+         Confiance : ${valeurs[iConfiance] ?? "n/d"}<br>
+         Puissance radiative : ${puissance || "n/d"} MW<br>
+         Détecté : ${valeurs[iDate] ?? ""} ${valeurs[iHeure] ?? ""} UTC</div>`
+      );
+      marqueur.addTo(coucheFoyers);
+    }
+  }
+
+  // ---------- panneau des alertes en direct ----------
+  function construireAlertes() {
+    const conteneur = document.getElementById("listeAlertes");
+    conteneur.innerHTML = "";
+
+    const ordre = { rouge:0, orange:1, jaune:2, vert:3 };
+    const deptsTries = Object.entries(vigilanceParDept)
+      .filter(([, v]) => v.niveau !== "vert")
+      .sort((a, b) => ordre[a[1].niveau] - ordre[b[1].niveau]);
+
+    if (deptsTries.length === 0) {
+      const div = document.createElement("div");
+      div.className = "messageEtat";
+      div.innerHTML = "Aucun département en vigilance jaune, orange ou rouge pour le moment.";
+      conteneur.appendChild(div);
+    } else {
+      deptsTries.forEach(([code, info]) => {
+        const nomDept = (departementsGeoJSON?.features || [])
+          .find(f => f.properties.code === code)?.properties?.nom || `Département ${code}`;
+        const div = document.createElement("div");
+        div.className = `alerte ${info.niveau}`;
+        div.innerHTML = `<div class="titre">${nomDept}<span>${info.niveauLabel}</span></div>
+                          <div class="details">Vigilance météo en cours — code ${code}</div>`;
+        conteneur.appendChild(div);
+      });
+    }
+
+    const nbFoyers = coucheFoyers.getLayers().length;
+    const divFoyers = document.createElement("div");
+    divFoyers.className = "messageEtat";
+    divFoyers.innerHTML = cleFIRMS
+      ? `<b>${nbFoyers}</b> foyer(s) thermique(s) détecté(s) par satellite (VIIRS, 48h).`
+      : `Renseigne une clé FIRMS en bas du panneau pour afficher les foyers actifs détectés par satellite.`;
+    conteneur.appendChild(divFoyers);
+
+    const divPompiers = document.createElement("div");
+    divPompiers.className = "messageEtat";
+    divPompiers.innerHTML =
+      "Les interventions des pompiers ne sont pas publiées via une API nationale ouverte en temps réel. " +
+      "Certains SDIS départementaux communiquent ponctuellement sur leurs propres comptes officiels — " +
+      "aucune source unique et fiable n'existe à ce jour pour les agréger automatiquement.";
+    conteneur.appendChild(divPompiers);
+  }
+
+  // ---------- orchestration ----------
+  async function toutRecharger() {
+    document.getElementById("majTexte").textContent = "actualisation…";
+    const erreurs = [];
+
+    if (!departementsGeoJSON) {
+      try { await chargerDepartements(); }
+      catch (erreur) { erreurs.push("contours départements : " + erreur.message); console.error("Contours:", erreur); }
+    }
+
+    try { await chargerVigilance(); }
+    catch (erreur) { erreurs.push("vigilance météo : " + erreur.message); console.error("Vigilance:", erreur); }
+
+    try { await chargerFoyers(); }
+    catch (erreur) { erreurs.push("foyers FIRMS : " + erreur.message); console.error("Foyers:", erreur); }
+
+    construireAlertes();
+
+    if (erreurs.length === 0) {
+      document.getElementById("majTexte").textContent =
+        "mis à jour à " + new Date().toLocaleTimeString("fr-FR");
+    } else {
+      document.getElementById("majTexte").textContent = "échec : " + erreurs.join(" · ");
+      const divErreur = document.createElement("div");
+      divErreur.className = "messageEtat";
+      divErreur.style.borderColor = "var(--rouge)";
+      divErreur.innerHTML = "<b>Échecs de chargement</b><br>" + erreurs.map(e => "• " + e).join("<br>") +
+        "<br><br>Si les trois sources échouent en même temps, l'environnement dans lequel le fichier est ouvert " +
+        "bloque probablement les requêtes réseau sortantes (bac à sable). Essaie d'ouvrir le fichier .html " +
+        "directement dans un navigateur (double-clic, hors de l'app Claude) pour vérifier.";
+      document.getElementById("listeAlertes").prepend(divErreur);
+    }
+  }
+
+  document.getElementById("btnActualiser").addEventListener("click", toutRecharger);
+  await toutRecharger();
+  setInterval(toutRecharger, 10 * 60 * 1000); // rafraîchissement automatique toutes les 10 minutes
+
+})();
+</script>
+</body>
+</html>
