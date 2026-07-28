@@ -284,9 +284,29 @@
     coucheFoyers.clearLayers();
     if (!cleFIRMS) return;
 
-    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${cleFIRMS}/VIIRS_SNPP_NRT/${BBOX_FRANCE}/2`;
-    const reponse = await fetch(url);
-    const texte = await reponse.text();
+    const indicateur = document.getElementById("etatFoyers");
+    if (indicateur) indicateur.textContent = "chargement des foyers…";
+
+    const controleur = new AbortController();
+    const delaiMax = setTimeout(() => controleur.abort(), 20000); // 20s max, le serveur FIRMS peut être lent
+
+    let texte;
+    try {
+      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${cleFIRMS}/VIIRS_SNPP_NRT/${BBOX_FRANCE}/1`;
+      const reponse = await fetch(url, { signal: controleur.signal });
+      texte = await reponse.text();
+    } catch (erreur) {
+      if (indicateur) indicateur.textContent = "";
+      if (erreur.name === "AbortError") {
+        throw new Error("le serveur FIRMS n'a pas répondu en 20s (réessaie plus tard, c'est fréquent chez eux)");
+      }
+      throw erreur;
+    } finally {
+      clearTimeout(delaiMax);
+    }
+
+    if (indicateur) indicateur.textContent = "";
+
     const lignes = texte.trim().split("\n");
     if (lignes.length < 2) return;
 
